@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FONBET</title>
+    <!-- Иконка -->
+    <link rel="icon" href="./game_icon.png?v=1" type="image/png" />
+    
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/hack-font@3/build/web/hack.css"
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Hack", ui-monospace, "Cascadia Code", "SF Mono", Menlo,
+          Consolas, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html, body {
+        margin: 0;
+        color: #edf3ff;
+        background: #050814;
+        width: 100%;
+        height: 100%;
+      }
+
+      body {
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        box-sizing: border-box;
+      }
+
+      .pygodide-shell {
+        margin: 0;
+        padding: 0;
+        width: 360px;
+        height: 640px;
+        flex-shrink: 0;
+        position: relative;
+      }
+
+      .pygodide-stage {
+        position: relative;
+        margin: 0;
+        padding: 0;
+        width: 360px;
+        height: 640px;
+      }
+
+      /* Контейнер загрузчика */
+      #pygodide-loader {
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        background-color: #050814;
+        transition: opacity 300ms ease-out;
+      }
+
+      #pygodide-loader[data-state="hidden"] {
+        opacity: 0;
+        visibility: hidden;
+      }
+
+      /* Скрываем визуальные элементы */
+      #pygodide-brand,
+      #status,
+      #pygodide-progress,
+      #pygodide-progress-fill {
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+
+      #pygodide-version {
+        display: none !important;
+      }
+
+      #canvas {
+        display: block;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: #050814;
+        width: 360px;
+        height: 640px;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+
+      /* Реальное поле ввода ника (накладываем поверх игры) */
+      #mobile-nickname-input {
+        position: absolute;
+        top: 280px;
+        left: 50px;
+        width: 260px;
+        height: 50px;
+        font-size: 24px;
+        text-align: center;
+        color: transparent; /* Прячем текст, чтобы не было двойного отображения */
+        caret-color: transparent;
+        background: transparent;
+        border: none;
+        outline: none;
+        z-index: 10;
+        display: none; /* Показываем только когда нужно */
+        opacity: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="pygodide-shell">
+      <div class="pygodide-stage">
+        <div id="pygodide-loader" data-state="active">
+          <a id="pygodide-brand" href="#" aria-label="brand">
+            <img src="./pygodide-logo.svg" alt="logo" />
+          </a>
+          <div id="status">Loading...</div>
+          <div id="pygodide-progress" class="pygodide-progress">
+            <span id="pygodide-progress-fill" class="pygodide-progress-fill"></span>
+          </div>
+        </div>
+        <canvas
+          id="canvas"
+          data-canvas-layout="fixed"
+          width="360"
+          height="640"
+          tabindex="0"
+        ></canvas>
+        
+        <!-- Поле ввода, которое лежит ровно на месте плашки в игре -->
+        <input type="text" id="mobile-nickname-input" maxlength="15" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/pyodide/v314.0.0/full/pyodide.js"></script>
+    <script type="module" src="./boot.js?v=a6318f5a52fb"></script>
+
+    <script>
+      // Ждем, когда игра загрузится
+      const waitForGame = setInterval(() => {
+        if (window.pyodide || (window.game && window.game.pyodide)) {
+          clearInterval(waitForGame);
+          
+          const input = document.getElementById('mobile-nickname-input');
+          
+          // Проверяем каждые 100 мс, не находимся ли мы на экране ника
+          setInterval(() => {
+            try {
+              const py = window.pyodide || window.game.pyodide;
+              if (!py) return;
+              
+              const gameClass = py.globals.get('Game');
+              if (!gameClass || !gameClass._instance) return;
+              
+              const game = gameClass._instance;
+              
+              // Если мы на экране ввода ника — показываем поле ввода (чтобы можно было тапнуть)
+              if (game.state === 'nickname') {
+                if (input.style.display !== 'block') {
+                  input.style.display = 'block';
+                  // Синхронизируем текст, если он уже был введен
+                  if (game.nickname_screen.nickname) {
+                    input.value = game.nickname_screen.nickname;
+                  }
+                }
+              } else {
+                if (input.style.display !== 'none') {
+                  input.style.display = 'none';
+                  input.blur();
+                }
+              }
+            } catch (e) {}
+          }, 100);
+
+          // Когда игрок тапает по полю (или кликает мышкой) — фокусируемся на поле (вызываем клавиатуру)
+          input.addEventListener('focus', () => {
+             // Ничего не делаем, просто фокусируемся
+          });
+          
+          // Когда игрок печатает — передаем текст в Питон
+          input.addEventListener('input', () => {
+            try {
+              const py = window.pyodide || window.game.pyodide;
+              const gameClass = py.globals.get('Game');
+              if (gameClass && gameClass._instance && gameClass._instance.state === 'nickname') {
+                gameClass._instance.nickname_screen.nickname = input.value;
+              }
+            } catch (e) {}
+          });
+          
+          // Когда игрок нажимает Enter (или "Готово")
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              try {
+                const py = window.pyodide || window.game.pyodide;
+                const gameClass = py.globals.get('Game');
+                const game = gameClass._instance;
+                if (game && game.state === 'nickname' && input.value.length >= 2) {
+                  game.profile.nickname = input.value;
+                  game.profile.first_login = false;
+                  game.add_player_to_ranking();
+                  game.state = "main_menu";
+                  input.blur();
+                }
+              } catch (e) {}
+            }
+          });
+          
+          console.log("✅ Система ввода ника готова");
+        }
+      }, 500);
+    </script>
+  </body>
+</html>
